@@ -24,13 +24,9 @@ self.addEventListener('push', function (event) {
 	event.waitUntil(self.registration.showNotification(options.title, options))
 })
 
-const timestamps = {}
 self.addEventListener('notificationclick', function (event) {
 	logger.log('Notification clicked.', event)
 	event.notification.close()
-
-	if (event.notification.timestamp in timestamps) return
-	timestamps[event.notification.timestamp] = true
 
 	let clickResponsePromise = Promise.resolve()
 	if (event.action) {
