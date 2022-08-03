@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Push Demo</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.28.0/themes/prism.min.css">
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+
+        header {
+            margin-left: 32px;
+        }
+
+        .tab-root {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: 32px;
+        }
+
+        label {
+            padding: 4px 16px;
+            order: -1;
+        }
+
+        .content {
+            position: relative;
+            width: 100%;
+            display: none;
+        }
+
+        input[type="radio"]:checked+label {
+            border-bottom: 2px solid #1976d2;
+        }
+
+        input[type="radio"]:checked+label+.content {
+            display: block;
+        }
+
+        input[type="radio"] {
+            display: none;
+        }
+
+        .execute {
+            border: 2px #1976d2;
+            border-radius: 4px;
+            padding: 8px 32px;
+            width: 100%;
+            background: #1976d2;
+            color: #fff;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+        }
+
+        .copy {
+            position: absolute;
+            right: 8px;
+            top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app" v-cloak>
+        <header v-if="subscriptionParam">
+            <a href="./">&lt; Back to Top</a>
+            <h1>Shared Subscription</h1>
+            <h2>Not a subscription for this device</h2>
+        </header>
+        <button v-if="usergesture" @click="requestPermission">Enable push notifications</button>
+        <button v-if="subscription && canShare && !subscriptionParam" @click="share">Share subscription</button>
+        <main v-if="subscription">
+            <div class="tab-root">
+                <template v-for="(func, language) in languages">
+                    <input type="radio" name="language" :id="language" :checked="language === 'curl' ? true : false" />
+                    <label :for="language">{{ language }}</label>
+                    <div class="content">
+                        <pre><code :class="detectLang(language)">{{ func(body) }}</code></pre>
+                        <button class="execute" @click="execute">Execute</button>
+                        <button class="copy" @click="copy($event, func(body))">Copy</button>
+                    </div>
+                </template>
+            </div>
+        </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.28.0/prism.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.28.0/components/prism-bash.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.28.0/components/prism-python.min.js"></script>
+    <script type="module">
+        import Vue from 'https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.esm.browser.min.js'
+
+        const curl = (subscription) => `curl https://web-push-server.vercel.app/api/send \\\n    -d '${subscription}'`
+        const wget = (subscription) => `wget https://web-push-server.vercel.app/api/send \\\n    --post-data='${subscription}' -qO-`
+        const Python = (subscription) => `import requests\n\njson = ${subscription.replace('null', 'None')}\nrequests.post("https://web-push-server.vercel.app/api/send", json=json)`
+        const JavaScript = (subscription) => `fetch("https://web-push-server.vercel.app/api/send", {\n    "method": "POST",\n    "body": JSON.stringify(${subscription.split('\n').map(l => l === '{' ? l : '    ' + l).join('\n')})\n})`
+
+        new Vue({
+            el: '#app',
+            data() {
+                return {
+                    languages: { curl, wget, JavaScript, Python },
+                    subscription: null,
+                    subscriptionParam: new URL(location).searchParams.get('subscription'),
+                    usergesture: false,
+                    canShare: !!navigator.share
+                }
+            },
+            computed: {
+                body() {
+                    return JSON.stringify({
+                        subscription: this.subscription,
+                        payload: {
+                            title: 'Hello',
+                            body: 'Thanks for sending this push msg.',
+                            data: {
+                                url: "https://example.com"
+                            }
+                        }
+                    }, null, 4)
+                }
+            },
+            async mounted() {
+                if (this.subscriptionParam) {
+                    this.subscription = JSON.parse(this.subscriptionParam)
+                    return
+                }
+
+                if (Notification.permission === 'default') {
+                    this.requestPermission()
+                } else if (Notification.permission === 'granted') {
+                    this.subscribe()
+                } else {
+                    alert('Please allow notification')
+                }
+            },
+            methods: {
+                execute(to) {
+                    fetch('https://web-push-server.vercel.app/api/send', {
+                        method: 'POST',
+                        body: this.body
+                    })
+                },
+                detectLang(language) {
+                    if (language === 'JavaScript') return 'language-javascript'
+                    if (language === 'Python') return 'language-python'
+                    return 'language-bash'
+                },
+                copy(event, code) {
+                    var textarea = document.createElement('textarea')
+                    textarea.value = code
+                    document.body.appendChild(textarea)
+                    textarea.select()
+                    document.execCommand('copy')
+                    document.body.removeChild(textarea)
+                    event.target.textContent = 'Copied!'
+                    setTimeout(() => event.target.textContent = 'Copy', 5000)
+                },
+                async requestPermission() {
+                    this.usergesture = false
+                    const permission = await Notification.requestPermission()
+                    if (permission === 'granted') this.subscribe()
+                    else if (permission === 'default') this.usergesture = true
+                },
+                async subscribe() {
+                    const applicationServerKey = 'BDd3_hVL9fZi9Ybo2UUzA284WG5FZR30_95YeZJsiApwXKpNcF1rRPF3foIiBHXRdJI2Qhumhf6_LFTeZaNndIo'
+                    let reg = await navigator.serviceWorker.getRegistration()
+                    if (!reg) reg = await navigator.serviceWorker.register('./sw.js')
+                    let subs = await reg.pushManager.getSubscription()
+                    if (!subs) subs = await (await navigator.serviceWorker.ready).pushManager.subscribe({ userVisibleOnly: true, applicationServerKey })
+                    this.subscription = subs.toJSON()
+                    this.$nextTick(() => Prism.highlightAll())
+                },
+                share() {
+                    navigator.share({
+                        title: 'My Subscription',
+                        text: JSON.stringify(this.subscription, null, 4) + '\n',
+                        url: location + '?' + new URLSearchParams({ subscription: JSON.stringify(this.subscription) }),
+                    })
+                }
+            }
+        })
+    </script>
+</body>
+
+</html>
